@@ -225,3 +225,18 @@ def release_spot(reservation_id):
 
     flash("Spot released successfully.", "success")
     return redirect(url_for('user_dashboard'))
+
+
+@app.route('/user/history')
+@login_required
+def parking_history():
+    if current_user.role != 'user':
+        flash("Access denied!", "danger")
+        return redirect(url_for('home'))
+
+    history = Reservation.query.filter(
+        Reservation.user_id == current_user.id,
+        Reservation.end_time != None
+    ).order_by(Reservation.end_time.desc()).all()
+
+    return render_template("parking_history.html", history=history)
