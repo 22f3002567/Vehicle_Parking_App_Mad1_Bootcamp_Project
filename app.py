@@ -92,3 +92,64 @@ if __name__ == '__main__':
         db.create_all()
     app.run(debug=True)
 
+# Admin Dashboard View
+@app.route('/admin/dashboard')
+@login_required
+def admin_dashboard():
+    if not current_user.is_admin:
+        abort(403)
+
+    lots = ParkingLot.query.all()
+    users = User.query.filter_by(is_admin=False).all()
+    return render_template('admin_dashboard.html', lots=lots, users=users)
+
+# Create Lot
+@app.route('/admin/create_lot', methods=['POST'])
+@login_required
+def create_lot():
+    if not current_user.is_admin:
+        abort(403)
+
+    name = request.form['name']
+    capacity = int(request.form['capacity'])
+    price = float(request.form['price_per_hour'])
+
+    lot = ParkingLot(name=name, capacity=capacity, price_per_hour=price)
+    db.session.add(lot)
+    db.session.commit()
+
+    # Create spots
+    for i in range(1, capacity + 1):
+        spot = ParkingSpot(number=i, lot_id=lot.id)
+        db.session.add(spot)
+    db.session.commit()
+
+    return redirect(url_for('admin_dashboard'))
+
+# Delete Lot
+@app.route('/admin/delete_lot/<int:lot_id>')
+@login_required
+def delete_lot(lot_id):
+    if not current_user.is_admin:
+        abort(403)
+
+    lot = ParkingLot.query.get_or_404(lot_id)
+    for spot in lot.spots:
+        if spot.reservations:
+            flash('Cannot delete lot with reservations.', 'danger')
+            return redirect(url_for('admin_dashboard'))
+        db.session.delete(spot)
+    db.session.delete(lot)
+    db.session.commit()
+    return redirect(url_for('admin_dashboard'))
+
+# View Spots in Lot
+@app.route('/admin/view_spots/<int:lot_id>')
+@login_required
+def view_spots(lot_id):
+    if not current_user.is_admin:
+        abort(403)
+
+    lot = ParkingLot.query.get_or_404(lot_id)
+    spots = lot.spots
+    return render_template('view_spots.html', lot=lot, spots=spots)
