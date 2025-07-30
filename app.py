@@ -153,3 +153,75 @@ def view_spots(lot_id):
     lot = ParkingLot.query.get_or_404(lot_id)
     spots = lot.spots
     return render_template('view_spots.html', lot=lot, spots=spots)
+
+# ===================== User Dashboard =====================
+@app.route('/user/dashboard')
+@login_required
+def user_dashboard():
+    if current_user.role != 'user':
+        flash("Access denied!", "danger")
+        return redirect(url_for('home'))
+    
+    lots = ParkingLot.query.all()
+    return render_template("user_dashboard.html", lots=lots)
+
+# ===================== Reserve Spot =====================
+@app.route('/reserve/<int:lot_id>', methods=["POST"])
+@login_required
+def reserve_spot(lot_id):
+    if current_user.role != 'user':
+        flash("Access denied!", "danger")
+        return redirect(url_for('home'))
+
+    lot = ParkingLot.query.get_or_404(lot_id)
+    available_spot = ParkingSpot.query.filter_by(lot_id=lot.id, is_occupied=False).first()
+
+    if not available_spot:
+        flash("No available spots in this lot.", "danger")
+        return redirect(url_for('user_dashboard'))
+
+    # Mark the spot as occupied
+    available_spot.is_occupied = True
+
+    # Create reservation
+    reservation = Reservation(
+        user_id=current_user.id,
+        spot_id=available_spot.id,
+        start_time=datetime.now()
+    )
+
+    db.session.add(reservation)
+    db.session.commit()
+
+    flash(f"Reserved Spot {available_spot.spot_number} in {lot.name}", "success")
+    return redirect(url_for('user_dashboard'))
+
+# ===================== Release Spot =====================
+@app.route('/release/<int:reservation_id>', methods=["POST"])
+@login_required
+def release_spot(reservation_id):
+    reservation = Reservation.query.get_or_404(reservation_id)
+
+    if reservation.user_id != current_user.id:
+        flash("You cannot release someone else's reservation.", "danger")
+        return redirect(url_for('user_dashboard'))
+
+    if reservation.end_time:
+        flash("This spot is already released.", "warning")
+        return redirect(url_for('user_dashboard'))
+
+    reservation.end_time = datetime.now()
+
+    # Mark spot as free
+    reservation.spot.is_occupied = False
+
+    # Calculate cost (for next milestone)
+    time_diff = reservation.end_time - reservation.start_time
+    hours_parked = time_diff.total_seconds() / 3600
+    lot_price = reservation.spot.lot.price_per_hour or 20  # Default price if not set
+    reservation.cost = round(hours_parked * lot_price, 2)
+
+    db.session.commit()
+
+    flash("Spot released successfully.", "success")
+    return redirect(url_for('user_dashboard'))
