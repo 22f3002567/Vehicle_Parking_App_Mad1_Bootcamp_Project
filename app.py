@@ -1,242 +1,309 @@
-from flask import Flask, render_template, redirect, url_for, request, flash
+from flask import Flask, render_template, redirect, url_for, request, flash, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User
+from flask_wtf import FlaskForm
+from wtforms import StringField, IntegerField, FloatField, SubmitField, PasswordField
 
+from wtforms.validators import DataRequired, Email, EqualTo, Length
+from datetime import datetime
+import matplotlib.pyplot as plt
+import io
+import base64
+
+# --- App Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///parking.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db.init_app(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
+# --- Import Models ---
+from models import db, User, ParkingLot, ParkingSpot, Reservation
 
+# --- Extensions ---
+db.init_app(app)
+
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+# --- User Loader ---
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- Flask-WTF Forms ---
+# class RegisterForm(FlaskForm):
+#     username = StringField('Username', validators=[DataRequired(), Length(min=4, max=25)])
+#     full_name = StringField('Full Name', validators=[DataRequired(), Length(min=2, max=100)])
+#     email = StringField('Email', validators=[DataRequired(), Email()])
+#     password = PasswordField('Password', validators=[DataRequired(), Length(min=6)])
+#     confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
+#     submit = SubmitField('Register')
+
+class RegisterForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired(), Length(min=4, max=25)])
+    full_name = StringField('Full Name', validators=[DataRequired(), Length(min=2, max=100)])
+    email = StringField('Email', validators=[DataRequired()])  # removed Email() validator
+    password = PasswordField('Password', validators=[DataRequired(), Length(min=6)])
+    confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Register')
+
+
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Login')
+
+class AddLotForm(FlaskForm):
+    name = StringField('Lot Name', validators=[DataRequired(), Length(max=100)])
+    location = StringField('Location', validators=[DataRequired(), Length(max=200)])
+    address = StringField('Address', validators=[DataRequired(), Length(max=300)])
+    pincode = StringField('Pincode', validators=[DataRequired(), Length(min=5, max=6)])
+    total_spots = IntegerField('Total Spots', validators=[DataRequired() ])
+    price = FloatField('Price per Hour (₹)', validators=[DataRequired()])
+    submit = SubmitField('Add Lot')
+
+
+# --- Setup DB and Initial Admin ---
+def setup_initial_admin():
+    with app.app_context():
+        db.create_all()
+        if not User.query.filter_by(username='Siddharth').first():
+            admin = User(
+                username='Siddharth',
+                full_name='Siddharth Sahu',
+                email='Siddharth@admin.com',
+                password=generate_password_hash('sidd@123', method='pbkdf2:sha256'),
+                role='admin'
+            )
+            db.session.add(admin)
+            db.session.commit()
+
+setup_initial_admin()
+
+# --- Routes ---
 @app.route('/')
 def home():
-    return redirect(url_for('login'))
+    return render_template('home.html')
+
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        full_name = request.form['full_name']
-        email = request.form['email']
-        password = generate_password_hash(request.form['password'])
-        
-        existing_user = User.query.filter_by(username=username).first()
-        if existing_user:
-            flash('Username already exists')
+    form = RegisterForm()
+    if form.validate_on_submit():
+        if User.query.filter((User.username == form.username.data) | (User.email == form.email.data)).first():
+            flash('Username or email already exists.', 'warning')
             return redirect(url_for('register'))
-
-        new_user = User(username=username, full_name=full_name, email=email, password=password, role='user')
-        db.session.add(new_user)
+        hashed_password = generate_password_hash(form.password.data, method='pbkdf2:sha256')
+        user = User(
+            username=form.username.data,
+            full_name=form.full_name.data,
+            email=form.email.data,
+            password=hashed_password
+        )
+        db.session.add(user)
         db.session.commit()
-        flash('Account created successfully')
+        flash('Account created successfully!', 'success')
         return redirect(url_for('login'))
-
-    return render_template('register.html')
+    return render_template('register.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        user = User.query.filter_by(username=username).first()
-
-        if user and check_password_hash(user.password, password):
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(username=form.username.data).first()
+        if user and check_password_hash(user.password, form.password.data):
             login_user(user)
-            flash('Login successful')
+            flash('Logged in successfully!', 'success')
             if user.role == 'admin':
                 return redirect(url_for('admin_dashboard'))
             else:
-                return redirect(url_for('user_dashboard'))
+                return redirect(url_for('dashboard'))
         else:
-            flash('Invalid credentials')
-            return redirect(url_for('login'))
+            flash('Invalid credentials.', 'danger')
+    return render_template('login.html', form=form)
 
-    return render_template('login.html')
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    flash('Logged out successfully')
-    return redirect(url_for('login'))
+    flash('Logged out successfully.', 'info')
+    return redirect(url_for('home'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    if current_user.role == 'admin':
+        return redirect(url_for('admin_dashboard'))
+    lots = ParkingLot.query.all()
+    reservations = Reservation.query.filter_by(user_id=current_user.id).order_by(Reservation.start_time.desc()).all()
+    return render_template('user_dashboard.html', lots=lots, reservations=reservations)
 
 @app.route('/admin')
 @login_required
 def admin_dashboard():
     if current_user.role != 'admin':
-        flash('Access denied')
-        return redirect(url_for('login'))
-    return render_template('admin_dashboard.html')
-
-@app.route('/user')
-@login_required
-def user_dashboard():
-    if current_user.role != 'user':
-        flash('Access denied')
-        return redirect(url_for('login'))
-    return render_template('user_dashboard.html')
-
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
-
-# Admin Dashboard View
-@app.route('/admin/dashboard')
-@login_required
-def admin_dashboard():
-    if not current_user.is_admin:
-        abort(403)
+        return redirect(url_for('dashboard'))
 
     lots = ParkingLot.query.all()
-    users = User.query.filter_by(is_admin=False).all()
-    return render_template('admin_dashboard.html', lots=lots, users=users)
+    users = User.query.all()
+    spots = ParkingSpot.query.all()
+    bookings = Reservation.query.order_by(Reservation.start_time.desc()).all()
 
-# Create Lot
-@app.route('/admin/create_lot', methods=['POST'])
+    active_bookings = Reservation.query.filter(Reservation.end_time == None).count()
+
+    total_revenue = sum(res.cost or 0 for res in bookings if res.cost) 
+
+    # Earnings Chart
+    # earnings = {}
+    # for lot in lots:
+    #     total = 0
+    #     for spot in lot.spots:
+    #         if spot.reservation and spot.reservation.cost:
+    #             total += spot.reservation.cost
+    #     earnings[lot.name] = total
+
+    earnings = {}
+    for lot in lots:
+        lot_reservations = [r for r in bookings if r.spot.lot_id == lot.id and r.cost]
+        earnings[lot.name] = sum(r.cost for r in lot_reservations)
+
+
+    fig, ax = plt.subplots()
+    ax.bar(earnings.keys(), earnings.values(), color='skyblue')
+    ax.set_title('Earnings per Lot')
+    ax.set_ylabel('Earnings (₹)')
+    plt.xticks(rotation=45)
+    buf = io.BytesIO()
+    plt.tight_layout()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    chart_data = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+
+    # return render_template('admin_dashboard.html', lots=lots, users=users, chart_data=chart_data)
+    return render_template(
+        'admin_dashboard.html',
+        lots=lots,
+        users=users,
+        bookings=bookings, 
+        spots=spots,        
+        total_users=len(users), 
+        total_lots=len(lots),
+        total_revenue=total_revenue,
+        active_bookings=active_bookings,
+        chart_data=chart_data
+    )
+
+# --- Routes of manage_lots ---
+@app.route('/admin/manage_lots', methods=['GET'])
 @login_required
-def create_lot():
-    if not current_user.is_admin:
-        abort(403)
+def manage_lots():
+    if current_user.role != 'admin':
+        return redirect(url_for('dashboard'))
+    lots = ParkingLot.query.all()
+    return render_template('manage_lots.html', lots=lots)
 
-    name = request.form['name']
-    capacity = int(request.form['capacity'])
-    price = float(request.form['price_per_hour'])
 
-    lot = ParkingLot(name=name, capacity=capacity, price_per_hour=price)
-    db.session.add(lot)
-    db.session.commit()
+@app.route('/admin/edit_lot/<int:lot_id>', methods=['GET', 'POST'])
+@login_required
+def edit_lot(lot_id):
+    if current_user.role != 'admin':
+        return redirect(url_for('dashboard'))
+    lot = ParkingLot.query.get_or_404(lot_id)
+    if request.method == 'POST':
+        lot.name = request.form['name']
+        lot.address = request.form['address']
+        lot.pincode = request.form['pincode']
+        lot.price = float(request.form['price'])
+        db.session.commit()
+        flash('Lot updated successfully!', 'success')
+        return redirect(url_for('admin_dashboard'))
+    return render_template('edit_lot.html', lot=lot)
 
-    # Create spots
-    for i in range(1, capacity + 1):
-        spot = ParkingSpot(number=i, lot_id=lot.id)
-        db.session.add(spot)
-    db.session.commit()
-
-    return redirect(url_for('admin_dashboard'))
-
-# Delete Lot
 @app.route('/admin/delete_lot/<int:lot_id>')
 @login_required
 def delete_lot(lot_id):
-    if not current_user.is_admin:
-        abort(403)
-
+    if current_user.role != 'admin':
+        return redirect(url_for('dashboard'))
     lot = ParkingLot.query.get_or_404(lot_id)
     for spot in lot.spots:
-        if spot.reservations:
-            flash('Cannot delete lot with reservations.', 'danger')
-            return redirect(url_for('admin_dashboard'))
         db.session.delete(spot)
     db.session.delete(lot)
     db.session.commit()
+    flash('Lot deleted successfully!', 'info')
     return redirect(url_for('admin_dashboard'))
 
-# View Spots in Lot
-@app.route('/admin/view_spots/<int:lot_id>')
+@app.route('/admin/add_lot', methods=['GET', 'POST'])
 @login_required
-def view_spots(lot_id):
+def add_lot():
     if not current_user.is_admin:
         abort(403)
+    form = AddLotForm()
+    if form.validate_on_submit():
+        lot = ParkingLot(
+            name=form.name.data,
+            location=form.location.data,
+            address=form.address.data,
+            pincode=form.pincode.data,
+            price_per_hour=form.price.data,
+            total_spots=form.total_spots.data
+        )
+        db.session.add(lot)
+        db.session.commit()
+        flash('Parking lot added successfully.', 'success')
+        return redirect(url_for('admin_dashboard'))
+    return render_template('add_lot.html', form=form)
 
-    lot = ParkingLot.query.get_or_404(lot_id)
-    spots = lot.spots
-    return render_template('view_spots.html', lot=lot, spots=spots)
 
-# ===================== User Dashboard =====================
-@app.route('/user/dashboard')
+@app.route('/lot/<int:lot_id>')
 @login_required
-def user_dashboard():
-    if current_user.role != 'user':
-        flash("Access denied!", "danger")
-        return redirect(url_for('home'))
-    
-    lots = ParkingLot.query.all()
-    return render_template("user_dashboard.html", lots=lots)
-
-# ===================== Reserve Spot =====================
-@app.route('/reserve/<int:lot_id>', methods=["POST"])
-@login_required
-def reserve_spot(lot_id):
-    if current_user.role != 'user':
-        flash("Access denied!", "danger")
-        return redirect(url_for('home'))
-
+def view_lot(lot_id):
     lot = ParkingLot.query.get_or_404(lot_id)
-    available_spot = ParkingSpot.query.filter_by(lot_id=lot.id, is_occupied=False).first()
+    return render_template('lot_view.html', lot=lot)
 
-    if not available_spot:
-        flash("No available spots in this lot.", "danger")
-        return redirect(url_for('user_dashboard'))
+@app.route('/reserve/<int:lot_id>/<int:spot_id>', methods=['POST'])
+@login_required
+def reserve_spot(lot_id, spot_id):
+    spot = ParkingSpot.query.get_or_404(spot_id)
+    if spot.status == 'OCCUPIED':
+        flash('Spot is already reserved.', 'warning')
+        return redirect(url_for('view_lot', lot_id=lot_id))
 
-    # Mark the spot as occupied
-    available_spot.is_occupied = True
-
-    # Create reservation
+    spot.status = 'OCCUPIED'
     reservation = Reservation(
         user_id=current_user.id,
-        spot_id=available_spot.id,
-        start_time=datetime.now()
+        spot_id=spot.id,
+        vehicle_number=request.form['vehicle_number'],
+        start_time=datetime.utcnow()
     )
-
     db.session.add(reservation)
     db.session.commit()
+    flash('Spot reserved successfully!', 'success')
+    return redirect(url_for('dashboard'))
 
-    flash(f"Reserved Spot {available_spot.spot_number} in {lot.name}", "success")
-    return redirect(url_for('user_dashboard'))
-
-# ===================== Release Spot =====================
-@app.route('/release/<int:reservation_id>', methods=["POST"])
+@app.route('/checkout/<int:reservation_id>', methods=['POST'])
 @login_required
-def release_spot(reservation_id):
+def checkout(reservation_id):
     reservation = Reservation.query.get_or_404(reservation_id)
+    if reservation.user_id != current_user.id and current_user.role != 'admin':
+        flash('Unauthorized.', 'danger')
+        return redirect(url_for('dashboard'))
 
-    if reservation.user_id != current_user.id:
-        flash("You cannot release someone else's reservation.", "danger")
-        return redirect(url_for('user_dashboard'))
-
-    if reservation.end_time:
-        flash("This spot is already released.", "warning")
-        return redirect(url_for('user_dashboard'))
-
-    reservation.end_time = datetime.now()
-
-    # Mark spot as free
-    reservation.spot.is_occupied = False
-
-    # Calculate cost (for next milestone)
-    time_diff = reservation.end_time - reservation.start_time
-    hours_parked = time_diff.total_seconds() / 3600
-    lot_price = reservation.spot.lot.price_per_hour or 20  # Default price if not set
-    reservation.cost = round(hours_parked * lot_price, 2)
-
+    reservation.end_time = datetime.utcnow()
+    duration = (reservation.end_time - reservation.start_time).total_seconds() / 60
+    rate = reservation.spot.lot.price_per_hour or 10
+    reservation.total_time = int(duration)
+    reservation.cost = round((duration / 60) * rate, 2)
+    reservation.spot.status = 'AVAILABLE'
     db.session.commit()
+    flash(f'Checked out. Total cost: ₹{reservation.cost}', 'success')
+    return redirect(url_for('dashboard'))
 
-    flash("Spot released successfully.", "success")
-    return redirect(url_for('user_dashboard'))
-
-
-@app.route('/user/history')
-@login_required
-def parking_history():
-    if current_user.role != 'user':
-        flash("Access denied!", "danger")
-        return redirect(url_for('home'))
-
-    history = Reservation.query.filter(
-        Reservation.user_id == current_user.id,
-        Reservation.end_time != None
-    ).order_by(Reservation.end_time.desc()).all()
-
-    return render_template("parking_history.html", history=history)
+# --- Run App ---
+if __name__ == '__main__':
+    app.run(debug=True)

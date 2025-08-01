@@ -1,68 +1,116 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>User Dashboard - ParkEasy</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-    <div class="container mt-4">
-        <h2 class="mb-4">Welcome, {{ current_user.full_name }}</h2>
+{% extends "base.html" %}
 
-        <h4>Your Parking Lots</h4>
-        <div class="row">
-            {% for lot in lots %}
-            <div class="col-md-4">
-                <div class="card mb-3 shadow-sm">
-                    <div class="card-body">
-                        <h5 class="card-title">{{ lot.name }}</h5>
-                        <p class="card-text">Location: {{ lot.location }}</p>
-                        <p class="card-text">Total Spots: {{ lot.capacity }}</p>
-                        <p class="card-text">Available Spots: 
-                            {{ lot.spots|selectattr("is_occupied", "equalto", False)|list|length }}
-                        </p>
+{% block title %}Dashboard | ParkEasy{% endblock %}
 
-                        <form action="{{ url_for('reserve_spot', lot_id=lot.id) }}" method="post">
-                            <button class="btn btn-primary" type="submit">Reserve Spot</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+{% block content %}
+<div class="container py-4">
 
-        <h4 class="mt-5">Your Active Reservations</h4>
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Lot</th>
-                    <th>Spot No.</th>
-                    <th>Start Time</th>
-                    <th>Status</th>
-                    <th>Release</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for reservation in current_user.reservations %}
-                    {% if not reservation.end_time %}
-                    <tr>
-                        <td>{{ reservation.spot.lot.name }}</td>
-                        <td>{{ reservation.spot.spot_number }}</td>
-                        <td>{{ reservation.start_time.strftime("%Y-%m-%d %H:%M") }}</td>
-                        <td><span class="badge bg-success">Active</span></td>
-                        <td>
-                            <form method="post" action="{{ url_for('release_spot', reservation_id=reservation.id) }}">
-                                <button class="btn btn-danger btn-sm">Release</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
-        <a href="{{ url_for('parking_history') }}" class="btn btn-outline-dark mt-2">View Parking History</a>
-
-        <a href="{{ url_for('logout') }}" class="btn btn-secondary mt-3">Logout</a>
+    <!-- 👋 Welcome Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="text-primary">
+            <i class="bi bi-person-badge"></i> Hello, {{ current_user.username }}!
+        </h2>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+            <i class="bi bi-box-arrow-right"></i> Logout
+        </a>
     </div>
-</body>
-</html>
+
+    <!-- 🚗 Active Reservation Section -->
+    <div class="card shadow-sm glass mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-car-front-fill"></i> Current Reservation</h5>
+            {% if reservation %}
+                <p><strong>Spot:</strong> {{ reservation.spot.spot_number }}</p>
+                <p><strong>Start Time:</strong> {{ reservation.start_time }}</p>
+                <form method="POST" action="{{ url_for('release') }}">
+                    <button type="submit" class="btn btn-sm btn-danger">
+                        <i class="bi bi-x-circle"></i> Release Spot
+                    </button>
+                </form>
+            {% else %}
+                <p class="text-muted mb-0">You don’t have an active reservation.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🅿️ Available Lots Section -->
+    <div class="card shadow-sm glass mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-geo-alt-fill"></i> Available Parking Lots</h5>
+            {% if lots %}
+                <div class="row">
+                    {% for lot in lots %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 border-0 shadow-sm bg-light">
+                                <div class="card-body">
+                                    <h5 class="text-success">{{ lot.name }}</h5>
+                                    <p class="small mb-2">
+                                        📍 {{ lot.location }}<br>
+                                        🧭 Total Spots: {{ lot.total_spots }}<br>
+                                        ✅ Available: {{ lot.available_spots() }}
+                                    </p>
+                                    <form action="{{ url_for('reserve', lot_id=lot.id) }}" method="GET">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Reserve Spot <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No parking lots available currently.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 📜 Reservation History Section -->
+    <div class="card shadow-sm glass mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-clock-history"></i> Reservation History</h5>
+            {% if history %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm text-center">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Spot</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Duration (min)</th>
+                                <th>Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for h in history %}
+                                <tr>
+                                    <td>{{ h.spot.spot_number }}</td>
+                                    <td>{{ h.start_time }}</td>
+                                    <td>{{ h.end_time }}</td>
+                                    <td>{{ h.total_time }}</td>
+                                    <td>₹{{ "%.2f"|format(h.cost) }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">No past reservations to display.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 📈 Parking Summary Chart Section -->
+    <div class="card shadow-sm glass mb-4">
+        <div class="card-body text-center">
+            <h5 class="card-title"><i class="bi bi-bar-chart-line-fill"></i> Parking Summary</h5>
+            {% if user_chart %}
+                <img src="data:image/png;base64,{{ user_chart }}" class="img-fluid rounded shadow-sm" alt="Parking Summary Chart">
+            {% else %}
+                <p class="text-muted mb-0">No usage data available yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
