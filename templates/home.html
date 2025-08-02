@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Home - ParkEasy{% endblock %}
+
+{% block content %}
+
+<!-- ✅ Hero Section -->
+<section class="py-5 bg-light text-center">
+    <div class="container">
+        <div class="row align-items-center">
+            <!-- Text Content -->
+            <div class="col-md-6 mb-4 mb-md-0">
+                <h1 class="display-5 fw-bold text-primary">
+                    <i class="bi bi-car-front-fill me-2"></i>Welcome to ParkEasy
+                </h1>
+                <p class="lead text-muted mt-3">
+                    Seamless, Smart, and Secure Parking Management at your fingertips.
+                </p>
+
+                {% if not current_user.is_authenticated %}
+                <div class="mt-4 d-flex gap-3 justify-content-center justify-content-md-start">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg px-4">Login</a>
+                    <a href="{{ url_for('register') }}" class="btn btn-outline-secondary btn-lg px-4">Register</a>
+                </div>
+                {% else %}
+                <div class="mt-4">
+                    {% if current_user.role == 'admin' %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary btn-lg px-4">Go to Admin Dashboard</a>
+                    {% else %}
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg px-4">Go to Dashboard</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Illustration -->
+            <div class="col-md-6">
+                <img src="https://undraw.co/api/illustrations/2a17df2a-7e38-4f19-a04e-81d0c62aa3e4" 
+                     alt="Parking Illustration" class="img-fluid" loading="lazy">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ✅ Features Section -->
+<section class="container py-5">
+    <div class="text-center mb-5">
+        <h2 class="fw-bold text-dark">Why Choose ParkEasy?</h2>
+        <p class="text-muted">Built to simplify parking for both users and admins.</p>
+    </div>
+
+    <div class="row text-center">
+        <div class="col-md-4 mb-4">
+            <div class="p-4 bg-white border rounded shadow-sm h-100">
+                <i class="bi bi-lightning-charge fs-2 text-primary mb-3"></i>
+                <h5 class="fw-bold">Quick Booking</h5>
+                <p class="text-muted">Book your parking space with just a few clicks.</p>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="p-4 bg-white border rounded shadow-sm h-100">
+                <i class="bi bi-lock fs-2 text-primary mb-3"></i>
+                <h5 class="fw-bold">Secure Access</h5>
+                <p class="text-muted">Role-based access for users and administrators.</p>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="p-4 bg-white border rounded shadow-sm h-100">
+                <i class="bi bi-bar-chart fs-2 text-primary mb-3"></i>
+                <h5 class="fw-bold">Real-time Dashboard</h5>
+                <p class="text-muted">Monitor occupancy, bookings, and spot availability easily.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

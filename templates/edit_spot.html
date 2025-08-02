@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Parking Spot - ParkEasy{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('manage_lots') }}">Manage Lots</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('manage_spots', lot_id=form.lot_id.data) }}">Manage Spots</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Edit Spot</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-primary mb-0">Edit Spot #{{ form.spot_number.data }}</h2>
+        <a href="{{ url_for('manage_spots', lot_id=form.lot_id.data) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+    </div>
+
+    <form method="POST">
+        {{ form.hidden_tag() }}
+
+        <div class="mb-3">
+            <label for="spot_number" class="form-label">Spot Number</label>
+            {{ form.spot_number(class="form-control", id="spot_number", placeholder="e.g., A1, B2") }}
+        </div>
+
+        <!-- <div class="mb-3">
+            <label for="lot_id" class="form-label">Assigned Parking Lot</label>
+            {{ form.lot_id(class="form-select", id="lot_id") }}
+            <div class="form-text">Select the lot to which this spot belongs.</div>
+        </div> -->
+        {{ form.lot_id() }}
+
+        <!-- <div class="mb-3 form-check">
+            {{ form.is_available(class="form-check-input", id="is_available") }}
+            <label for="is_available" class="form-check-label">Available for reservation</label>
+        </div> -->
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-save"></i> Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

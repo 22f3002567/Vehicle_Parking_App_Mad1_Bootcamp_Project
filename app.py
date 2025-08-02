@@ -3,7 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf import FlaskForm
-from wtforms import StringField, IntegerField, FloatField, SubmitField, PasswordField
+from wtforms.validators import DataRequired, Email, EqualTo, Length
+from wtforms import StringField, IntegerField, FloatField, SubmitField, PasswordField, SelectField, HiddenField, BooleanField
 
 from wtforms.validators import DataRequired, Email, EqualTo, Length
 from datetime import datetime
@@ -64,6 +65,14 @@ class AddLotForm(FlaskForm):
     total_spots = IntegerField('Total Spots', validators=[DataRequired() ])
     price = FloatField('Price per Hour (₹)', validators=[DataRequired()])
     submit = SubmitField('Add Lot')
+
+class SpotForm(FlaskForm):
+    spot_number = StringField("Spot Number", validators=[DataRequired()])
+    status = SelectField('Status', choices=[('AVAILABLE', 'Available'), ('OCCUPIED', 'Occupied')])
+    lot_id = HiddenField()
+    is_available = BooleanField('Available')
+    submit = SubmitField("Add Spot")
+    
 
 
 # --- Setup DB and Initial Admin ---
@@ -204,47 +213,67 @@ def admin_dashboard():
 @login_required
 def manage_lots():
     if current_user.role != 'admin':
+        flash('Unauthorized access.', 'danger')
         return redirect(url_for('dashboard'))
     lots = ParkingLot.query.all()
     return render_template('manage_lots.html', lots=lots)
-
 
 @app.route('/admin/edit_lot/<int:lot_id>', methods=['GET', 'POST'])
 @login_required
 def edit_lot(lot_id):
     if current_user.role != 'admin':
+        flash('Unauthorized access.', 'danger')
         return redirect(url_for('dashboard'))
     lot = ParkingLot.query.get_or_404(lot_id)
-    if request.method == 'POST':
-        lot.name = request.form['name']
-        lot.address = request.form['address']
-        lot.pincode = request.form['pincode']
-        lot.price = float(request.form['price'])
+    form = AddLotForm(obj=lot)
+    if form.validate_on_submit():
+        lot.name = form.name.data
+        lot.location = form.location.data
+        #lot.address = form.address.data
+        lot.pincode = form.pincode.data
+        lot.price_per_hour = form.price.data
+        lot.total_spots = form.total_spots.data
         db.session.commit()
-        flash('Lot updated successfully!', 'success')
-        return redirect(url_for('admin_dashboard'))
-    return render_template('edit_lot.html', lot=lot)
+        flash('Parking lot updated successfully!', 'success')
+        return redirect(url_for('manage_lots'))
+    return render_template('edit_lot.html', form=form, lot=lot)
 
-@app.route('/admin/delete_lot/<int:lot_id>')
+
+@app.route('/admin/delete_lot/<int:lot_id>', methods=['POST'])
 @login_required
 def delete_lot(lot_id):
     if current_user.role != 'admin':
-        return redirect(url_for('dashboard'))
-    lot = ParkingLot.query.get_or_404(lot_id)
-    for spot in lot.spots:
-        db.session.delete(spot)
-    db.session.delete(lot)
-    db.session.commit()
-    flash('Lot deleted successfully!', 'info')
-    return redirect(url_for('admin_dashboard'))
+        abort(403)
 
+    lot = ParkingLot.query.get_or_404(lot_id)
+
+    # Check if any spot is not AVAILABLE
+    if any(spot.status != 'AVAILABLE' for spot in lot.spots):
+        flash('Cannot delete this lot. Some spots are currently reserved or in use.', 'warning')
+        return redirect(url_for('manage_lots'))
+
+    try:
+        # Safe to delete since all spots are AVAILABLE
+        for spot in lot.spots:
+            db.session.delete(spot)
+
+        db.session.delete(lot)
+        db.session.commit()
+        flash('Parking lot deleted successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('An error occurred while deleting the lot.', 'danger')
+
+    return redirect(url_for('manage_lots'))
 @app.route('/admin/add_lot', methods=['GET', 'POST'])
 @login_required
 def add_lot():
-    if not current_user.is_admin:
+    if current_user.role != 'admin':
         abort(403)
+
     form = AddLotForm()
     if form.validate_on_submit():
+        # Step 1: Create and stage the new lot
         lot = ParkingLot(
             name=form.name.data,
             location=form.location.data,
@@ -254,10 +283,125 @@ def add_lot():
             total_spots=form.total_spots.data
         )
         db.session.add(lot)
+        db.session.flush()  # Get lot.id before commit
+
+        # Step 2: Generate all spots
+        total_spots = int(form.total_spots.data)
+        lot_prefix = lot.name[:3].upper()
+
+        for i in range(1, total_spots + 1):
+            spot = ParkingSpot(
+                spot_number=f"{lot_prefix}-{i}",
+                status='AVAILABLE',
+                lot_id=lot.id
+            )
+            db.session.add(spot)
+
+        # Step 3: Commit all at once
         db.session.commit()
-        flash('Parking lot added successfully.', 'success')
-        return redirect(url_for('admin_dashboard'))
+
+        flash('Parking lot and spots added successfully.', 'success')
+        return redirect(url_for('manage_lots'))
+
     return render_template('add_lot.html', form=form)
+
+# @app.route('/admin/add_spot/<int:lot_id>', methods=['GET', 'POST'])
+# @login_required
+# def add_spot(lot_id):
+#     if current_user.role != 'admin':
+#         abort(403)
+
+#     lot = ParkingLot.query.get_or_404(lot_id)
+#     form = SpotForm()
+
+#     if form.validate_on_submit():
+#         new_spot = ParkingSpot(
+#             lot_id=lot.id,
+#             spot_number=form.spot_number.data,
+#             status='AVAILABLE'  # defaulting to available
+#         )
+#         db.session.add(new_spot)
+#     db.session.commit()
+#     flash(f"Spot '{new_spot.spot_number}' added to {lot.name}.", 'success')
+#     return redirect(url_for('manage_lots'))  # or 'admin_dashboard' if you prefer
+
+#     return render_template('add_spot.html', form=form, lot=lot)
+
+@app.route('/admin/add_spot/<int:lot_id>', methods=['GET', 'POST'])
+@login_required
+def add_spot(lot_id):
+    if current_user.role != 'admin':
+        abort(403)
+
+    lot = ParkingLot.query.get_or_404(lot_id)
+    form = SpotForm()
+
+    if form.validate_on_submit():
+        new_spot = ParkingSpot(
+            lot_id=lot.id,
+            spot_number=form.spot_number.data,
+            status='AVAILABLE'
+        )
+        db.session.add(new_spot)
+        db.session.commit() 
+
+        flash(f"Spot '{new_spot.spot_number}' added to {lot.name}.", 'success')
+        return redirect(url_for('manage_spots', lot_id=lot.id))  
+
+    return render_template('add_spot.html', form=form, lot=lot) 
+
+
+@app.route('/admin/manage_spots/<int:lot_id>')
+@login_required
+def manage_spots(lot_id):
+    if current_user.role != 'admin':
+        abort(403)
+
+    lot = ParkingLot.query.get_or_404(lot_id)
+    spots = ParkingSpot.query.filter_by(lot_id=lot.id).all()
+
+    available = len([s for s in spots if s.status == 'AVAILABLE'])
+    occupied = len([s for s in spots if s.status == 'OCCUPIED'])
+
+    return render_template('manage_spots.html', lot=lot, spots=spots, available=available, occupied=occupied)
+
+@app.route('/admin/edit_spot/<int:spot_id>', methods=['GET', 'POST'])
+@login_required
+def edit_spot(spot_id):
+    if current_user.role != 'admin':
+        abort(403)
+
+    spot = ParkingSpot.query.get_or_404(spot_id)
+    form = SpotForm(obj=spot)
+
+    if request.method == 'GET':
+        form.lot_id.data = str(spot.lot_id)
+
+    if form.validate_on_submit():
+        spot.spot_number = form.spot_number.data
+        db.session.commit()
+        flash(f"Spot '{spot.spot_number}' updated successfully.", 'success')
+        return redirect(url_for('manage_spots', lot_id=spot.lot_id))
+
+    return render_template('edit_spot.html', form=form, spot=spot)
+
+@app.route('/admin/delete_spot/<int:spot_id>', methods=['POST'])
+@login_required
+def delete_spot(spot_id):
+    if current_user.role != 'admin':
+        abort(403)
+
+    spot = ParkingSpot.query.get_or_404(spot_id)
+    lot_id = spot.lot_id
+
+    if spot.status != 'AVAILABLE':
+        flash('Cannot delete this spot. It is currently occupied.', 'warning')
+        return redirect(url_for('manage_spots', lot_id=lot_id))
+
+    db.session.delete(spot)
+    db.session.commit()
+    flash('Spot deleted successfully.', 'success')
+    return redirect(url_for('manage_spots', lot_id=lot_id))
 
 
 @app.route('/lot/<int:lot_id>')
