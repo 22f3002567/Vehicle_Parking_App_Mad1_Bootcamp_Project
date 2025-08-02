@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}Booking Successful - ParkEasy{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <div class="alert alert-success shadow rounded p-4">
+                <h2 class="fw-bold text-success mb-3">Booking Confirmed!</h2>
+                <p class="fs-5">Your parking spot has been successfully reserved.</p>
+                <hr>
+                <p class="text-muted">Thank you for choosing <strong>ParkEasy</strong>.</p>
+            </div>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary mt-3">
+                <i class="bi bi-arrow-left-circle me-1"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

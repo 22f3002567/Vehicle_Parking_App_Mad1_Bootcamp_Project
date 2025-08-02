@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Booking History - ParkEasy{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4 fw-bold text-primary">My Booking History</h2>
+
+    {% if bookings %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Vehicle</th>
+                        <th>Parking Lot</th>
+                        <th>Spot</th>
+                        <th>Check-in</th>
+                        <th>Check-out</th>
+                        <th>Total Cost</th>
+                        <th>Status / Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for booking in bookings %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ booking.vehicle_number }}</td>
+                            <td>{{ booking.spot.lot.lot_name }}</td>
+                            <td>{{ booking.spot.spot_label }}</td>
+                            <td>{{ booking.start_time.strftime('%d-%b-%Y %I:%M %p') }}</td>
+                            <td>
+                                {% if booking.end_time %}
+                                    {{ booking.end_time.strftime('%d-%b-%Y %I:%M %p') }}
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if booking.cost is not none %}
+                                    ₹ {{ booking.cost }}
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not booking.end_time %}
+                                    <form method="POST" action="{{ url_for('checkout_booking', booking_id=booking.id) }}">
+                                        <button type="submit" class="btn btn-sm btn-warning">Checkout</button>
+                                    </form>
+                                {% else %}
+                                    <span class="badge bg-success">Completed</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center">
+            No bookings found.
+        </div>
+    {% endif %}
+
+    <div class="text-center mt-3">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

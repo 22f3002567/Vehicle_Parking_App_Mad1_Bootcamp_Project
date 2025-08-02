@@ -22,7 +22,8 @@
             {% if reservation %}
                 <p><strong>Spot:</strong> {{ reservation.spot.spot_number }}</p>
                 <p><strong>Start Time:</strong> {{ reservation.start_time }}</p>
-                <form method="POST" action="{{ url_for('release') }}">
+                <form method="POST" action="{{ url_for('checkout', reservation_id=reservation.id) }}">
+
                     <button type="submit" class="btn btn-sm btn-danger">
                         <i class="bi bi-x-circle"></i> Release Spot
                     </button>
@@ -49,7 +50,7 @@
                                         🧭 Total Spots: {{ lot.total_spots }}<br>
                                         ✅ Available: {{ lot.available_spots() }}
                                     </p>
-                                    <form action="{{ url_for('reserve', lot_id=lot.id) }}" method="GET">
+                                    <form action="{{ url_for('book', lot_id=lot.id) }}" method="GET">
                                         <button type="submit" class="btn btn-sm btn-outline-primary">
                                             Reserve Spot <i class="bi bi-chevron-right"></i>
                                         </button>
