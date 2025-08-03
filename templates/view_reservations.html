@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}All Reservations - ParkEasy Admin{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="fw-bold text-primary mb-4">All Parking Reservations</h2>
+
+    {% if reservations %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>User</th>
+                        <th>Vehicle</th>
+                        <th>Parking Lot</th>
+                        <th>Spot</th>
+                        <th>Check-in</th>
+                        <th>Check-out</th>
+                        <th>Total Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for res in reservations %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ res.user.username }}</td>
+                            <td>{{ res.vehicle_number }}</td>
+                            <td>{{ res.spot.lot.name }}</td>
+                            <td>{{ res.spot.spot_number }}</td>
+                            <td>{{ res.start_time.strftime('%d-%b-%Y %I:%M %p') }}</td>
+                            <td>
+                                {% if res.end_time %}
+                                    {{ res.end_time.strftime('%d-%b-%Y %I:%M %p') }}
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if res.cost %}
+                                    ₹ {{ res.cost }}
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center">No reservations found.</div>
+    {% endif %}
+
+    <div class="text-center mt-3">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">← Back to Admin Dashboard</a>
+    </div>
+</div>
+{% endblock %}
